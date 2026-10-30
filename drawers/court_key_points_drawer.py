@@ -1,3 +1,4 @@
+import numpy as np
 import supervision as sv
 
 class CourtKeypointDrawer:
@@ -37,17 +38,31 @@ class CourtKeypointDrawer:
         for index,frame in enumerate(frames):
             annotated_frame = frame.copy()
 
-            keypoints = court_keypoints[index]
+            # Convert PyTorch tensor to numpy array
+            keypoints_numpy = court_keypoints[index].cpu().numpy()
+            if len(keypoints_numpy.xy) == 0:
+                output_frames.append(annotated_frame)
+                continue
+
+            # Undetected keypoints are stored as (0, 0); only draw the detected ones, labelled
+            # with their original index
+            xy = keypoints_numpy.xy[0]
+            detected = (xy[:, 0] > 0) & (xy[:, 1] > 0)
+            if not detected.any():
+                output_frames.append(annotated_frame)
+                continue
+            keypoints = sv.KeyPoints(xy=xy[detected][np.newaxis].astype(np.float32))
+            labels = [str(i) for i in np.flatnonzero(detected)]
+
             # Draw dots
             annotated_frame = vertex_annotator.annotate(
                 scene=annotated_frame,
                 key_points=keypoints)
             # Draw labels
-            # Convert PyTorch tensor to numpy array
-            keypoints_numpy = keypoints.cpu().numpy()
             annotated_frame = vertex_label_annotator.annotate(
                 scene=annotated_frame,
-                key_points=keypoints_numpy)
+                key_points=keypoints,
+                labels=labels)
 
             output_frames.append(annotated_frame)
 

@@ -16,7 +16,8 @@ from drawers import (
     FrameNumberDrawer,
     PassInterceptionDrawer,
     TacticalViewDrawer,
-    SpeedAndDistanceDrawer
+    SpeedAndDistanceDrawer,
+    CourtLinesDrawer
 )
 from configs import(
     STUBS_DEFAULT_PATH,
@@ -92,8 +93,11 @@ def main():
         court_image_path="./images/basketball_court.png"
     )
 
-    court_keypoints_per_frame = tactical_view_converter.validate_keypoints(court_keypoints_per_frame)
-    tactical_player_positions = tactical_view_converter.transform_players_to_tactical_view(court_keypoints_per_frame,player_tracks)
+    # validate_keypoints is no longer used: its distance-ratio check ignores perspective and drops
+    # good keypoints; RANSAC in get_homographies takes care of wrong ones
+    court_keypoints_per_frame = tactical_view_converter.filter_low_confidence_keypoints(court_keypoints_per_frame)
+    court_homographies = tactical_view_converter.get_homographies(court_keypoints_per_frame)
+    tactical_player_positions = tactical_view_converter.transform_players_to_tactical_view(court_homographies,player_tracks)
 
     # Speed and Distance Calculator
     speed_and_distance_calculator = SpeedAndDistanceCalculator(
@@ -115,6 +119,7 @@ def main():
     pass_and_interceptions_drawer = PassInterceptionDrawer()
     tactical_view_drawer = TacticalViewDrawer()
     speed_and_distance_drawer = SpeedAndDistanceDrawer()
+    court_lines_drawer = CourtLinesDrawer()
 
     ## Draw object Tracks
     output_video_frames = player_tracks_drawer.draw(video_frames, 
@@ -125,6 +130,12 @@ def main():
 
     ## Draw KeyPoints
     output_video_frames = court_keypoint_drawer.draw(output_video_frames, court_keypoints_per_frame)
+
+    ## Draw Court Lines
+    output_video_frames = court_lines_drawer.draw(output_video_frames,
+                                                  court_homographies,
+                                                  tactical_view_converter.key_points,
+                                                  tactical_view_converter.court_lines)
 
     ## Draw Frame Number
     output_video_frames = frame_number_drawer.draw(output_video_frames)
