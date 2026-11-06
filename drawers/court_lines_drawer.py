@@ -3,7 +3,7 @@ import numpy as np
 
 class CourtLinesDrawer:
     """
-    A drawer class that projects the court template back onto each frame with the frame's
+    A drawer class that projects the court markings back onto each frame with the frame's
     homography. When the homography is right, the drawn lines sit on the real court lines.
 
     Attributes:
@@ -14,37 +14,31 @@ class CourtLinesDrawer:
         self.line_color = line_color
         self.thickness = thickness
 
-    def draw(self, video_frames, homographies, tactical_court_keypoints, court_lines):
+    def draw(self, video_frames, homographies, court_polylines):
         """
-        Draws the court lines on a sequence of frames.
+        Draws the court markings on a sequence of frames.
 
         Args:
             video_frames (list): List of video frames to draw on.
             homographies (list): Frame to tactical view homography (or None) for each frame.
-            tactical_court_keypoints (list): Court keypoints in tactical view coordinates.
-            court_lines (list): Pairs of keypoint indices that form the court lines.
+            court_polylines (list): Court markings as arrays of tactical view points.
 
-        Returns:
-            list: List of frames with the court lines drawn on them.
+        Yields:
+            numpy.ndarray: Each frame with the court markings drawn on it.
         """
-        output_video_frames = []
         for frame, homography in zip(video_frames, homographies):
             frame = frame.copy()
 
             if homography is not None:
                 tactical_to_frame = np.linalg.inv(homography)
-                for start_index, end_index in court_lines:
-                    line = np.array([[tactical_court_keypoints[start_index]],
-                                     [tactical_court_keypoints[end_index]]], dtype=np.float32)
-                    line = cv2.perspectiveTransform(line, tactical_to_frame).reshape(2, 2)
+                for polyline in court_polylines:
+                    points = cv2.perspectiveTransform(np.asarray(polyline, dtype=np.float32).reshape(-1, 1, 2),
+                                                      tactical_to_frame).reshape(-1, 2)
 
                     # A badly wrong homography can throw points absurdly far away
-                    if not np.all(np.isfinite(line)) or np.abs(line).max() > 1e5:
+                    if not np.all(np.isfinite(points)) or np.abs(points).max() > 1e5:
                         continue
 
-                    (x1, y1), (x2, y2) = line
-                    cv2.line(frame, (int(x1), int(y1)), (int(x2), int(y2)), self.line_color, self.thickness)
+                    cv2.polylines(frame, [np.round(points).astype(np.int32)], False, self.line_color, self.thickness)
 
-            output_video_frames.append(frame)
-
-        return output_video_frames
+            yield frame

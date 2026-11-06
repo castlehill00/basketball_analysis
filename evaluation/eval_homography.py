@@ -16,6 +16,10 @@ that a correct homography has to satisfy:
                   the detector mixes up the halves and that is measured by the speed instead)
     jitter        second difference over consecutive frames of where fixed image points land on
                   the court; a smoothly moving camera gives close to 0
+
+The last two settings add the stricter checks of each frame's fit (at least five keypoints
+agreeing, within 0.2 m) and the checking and smoothing per camera shot; evaluation/eval_court.py
+measures those on a labelled game.
 """
 import argparse
 import os
@@ -27,11 +31,13 @@ import numpy as np
 
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 from tactical_view_converter import TacticalViewConverter
+from camera_cut_detector import CameraCutDetector
 from drawers import CourtLinesDrawer, TacticalViewDrawer
-from utils import get_foot_position, read_video
+from utils import get_foot_position, read_video, VideoFrames
 
 # name, keypoint confidence threshold, run validate_keypoints, RANSAC threshold (m),
-# fix mirrored labels, smoothing window
+# fix mirrored labels, smoothing window, then optionally the stricter frame checks and the
+# smoothing per camera shot (both off when left out)
 SETTINGS = [
     ('all keypoints', None, True, None, False, 1),
     ('original (conf>=0.5)', 0.5, True, None, False, 1),
@@ -40,7 +46,9 @@ SETTINGS = [
     ('+mirror fix', 0.5, False, 1.0, True, 1),
     ('+smoothing 3', 0.5, False, 1.0, True, 3),
     ('+smoothing 9', 0.5, False, 1.0, True, 9),
-    ('+smoothing 5 (final)', 0.5, False, 1.0, True, 5),
+    ('+smoothing 5', 0.5, False, 1.0, True, 5),
+    ('+stricter frame checks', 0.5, False, 1.0, True, 5, True),
+    ('+camera shots (final)', 0.5, False, 1.0, True, 5, True, True),
 ]
 MAX_PLAYER_SPEED_KMH = 36
 CONFIDENT_KEYPOINT = 0.5
@@ -51,16 +59,20 @@ def to_numpy(values):
     return values.cpu().numpy() if hasattr(values, 'cpu') else np.asarray(values)
 
 
-def get_homographies(keypoints, conf_threshold, validate, ransac_threshold, fix_mirrored_labels, smoothing_window):
+def get_homographies(keypoints, league, camera_shots, conf_threshold, validate, ransac_threshold, fix_mirrored_labels,
+                     smoothing_window, strict_frame_checks=False, use_camera_shots=False):
+    frame_checks = {} if strict_frame_checks else {'min_inliers': 4, 'max_inlier_error_in_meters': None}
     converter = TacticalViewConverter('./images/basketball_court.png',
+                                      league=league,
                                       keypoint_conf_threshold=conf_threshold,
                                       ransac_threshold_in_meters=ransac_threshold,
                                       fix_mirrored_labels=fix_mirrored_labels,
-                                      smoothing_window=smoothing_window)
+                                      smoothing_window=smoothing_window,
+                                      **frame_checks)
     keypoints = converter.filter_low_confidence_keypoints(keypoints)
     if validate:
         keypoints = converter.validate_keypoints(keypoints)
-    return converter, converter.get_homographies(keypoints)
+    return converter, converter.get_homographies(keypoints, camera_shots if use_camera_shots else None)
 
 
 def collect_measurements(converter, homographies, raw_keypoints, player_tracks, fps, lag):
@@ -198,10 +210,10 @@ def save_comparison_figures(video_idx, frames, player_tracks, player_assignment,
         panels = []
         for drawer, homographies, label in ((before_drawer, before, 'original'), (after_drawer, after, 'improved')):
             homography = homographies[frame_idx]
-            panel = drawer.draw([frames[frame_idx]], [homography], converter.key_points, converter.court_lines)[0]
+            panel = next(drawer.draw([frames[frame_idx]], [homography], converter.court_polylines))
             positions = converter.transform_players_to_tactical_view([homography], [player_tracks[frame_idx]])
-            panel = tactical_view_drawer.draw([panel], converter.court_image_path, converter.width, converter.height,
-                                              converter.key_points, positions, [player_assignment[frame_idx]])[0]
+            panel = next(tactical_view_drawer.draw([panel], converter.court_image_path, converter.width, converter.height,
+                                                   converter.key_points, positions, [player_assignment[frame_idx]]))
             cv2.putText(panel, f'{label}  (video {video_idx}, frame {frame_idx})', (20, 240),
                         cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 3)
             panels.append(panel)
@@ -218,6 +230,7 @@ def main():
     parser.add_argument('--stub_root', default='stubs')
     parser.add_argument('--lag', type=int, default=10, help='frames between the two positions used for speed')
     parser.add_argument('--figure_dir', default=None, help='where to save before/after overlays (optional)')
+    parser.add_argument('--league', default='nba', choices=['fiba', 'nba'], help='court dimensions (the sample videos are NBA)')
     args = parser.parse_args()
 
     per_setting = {name: [] for name, *_ in SETTINGS}
@@ -229,11 +242,13 @@ def main():
             player_tracks = pickle.load(f)
         video_path = os.path.join(args.video_dir, f'video_{video_idx}.mp4')
         fps = cv2.VideoCapture(video_path).get(cv2.CAP_PROP_FPS) or 30
+        camera_shots = CameraCutDetector().get_segments(VideoFrames(video_path), read_from_stub=True,
+                                                        stub_path=os.path.join(stub_dir, 'camera_cut_stub.pkl'))
 
         rows = []
         homographies_by_setting = {}
         for name, *setting in SETTINGS:
-            converter, homographies = get_homographies(raw_keypoints, *setting)
+            converter, homographies = get_homographies(raw_keypoints, args.league, camera_shots, *setting)
             homographies_by_setting[name] = homographies
             measurements = collect_measurements(converter, homographies, raw_keypoints, player_tracks, fps, args.lag)
             per_setting[name].append(measurements)
