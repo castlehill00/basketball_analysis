@@ -7,3 +7,4 @@ from .pass_and_interceptions_drawer import PassInterceptionDrawer
 from .tactical_view_drawer import TacticalViewDrawer
 from .speed_and_distance_drawer import SpeedAndDistanceDrawer
 from .court_lines_drawer import CourtLinesDrawer
+from .shot_drawer import ShotDrawer

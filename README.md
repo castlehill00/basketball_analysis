@@ -6,6 +6,31 @@ Leveraging the convenience of Roboflow for dataset management and Ultralytics' Y
 
 Training notebooks are included to help you customize and fine-tune models to suit your specific needs, ensuring a seamless and efficient workflow.
 
+## 🎓 Course Project Additions
+
+This fork (branch `course-project`) is an image processing course project. Its aim is to tell who has the ball and whether each shot is worth two or three points, on real broadcast footage rather than on short single-camera clips. On top of the original repository it adds:
+
+- **Shots** (`shot_detector/`): finds each shot attempt from the ball reaching the hoop, goes back to the shooter, and compares the take-off spot on the court with the three-point line.
+- **A court homography that holds up on broadcast footage** (`camera_cut_detector/`, `tactical_view_converter/`): RANSAC with a mirror-label fix per frame, checks and robust smoothing per camera shot, and an adjustment to the painted court lines.
+- **A cleaner ball track** (`trackers/ball_tracker.py`): the input stretched as in training, the longest plausible chain per camera shot, and only short gaps filled.
+- **Possession** (`ball_aquisition/`): carried over short gaps within a camera shot, with a ball control share that adds up to 100%.
+- **Long videos**: frames are decoded on demand and drawn one at a time, so memory no longer grows with the video.
+
+Results on the second quarter of the 2023 FIBA World Cup final (25.8 minutes; rules and thresholds were tuned on the first quarter), compared with the original repository:
+
+| | original | this fork |
+|---|---|---|
+| Other camera views that get a court drawn on them | 10.0% | 0.0% |
+| Sudden court jumps per minute of main-camera footage | 137 | 0.4 |
+| Main-camera frames with a court | 97.0% | 85.2% |
+| Two or three points correct, on the shots found (11 of 33) | 6/11 | 11/11 |
+
+Shot recall is the weak spot: in most missed shots the ball detector never finds the ball near the hoop. `evaluation/` holds the labels and the scripts behind these numbers, each comparing the final pipeline with every change undone in turn. The labels were made from the frames and were not checked by a second person.
+
+The results were produced with Python 3.11, torch 2.11, ultralytics 8.4, supervision 0.25 and transformers 4.46.
+
+---
+
 ## 📁 Table of Contents
 
 1.  [Features](#-features)
@@ -27,6 +52,7 @@ Training notebooks are included to help you customize and fine-tune models to su
 - Court keypoint detection for visualizing important zones.
 - Team assignment with jersey color classification.
 - Ball possession detection, pass detection, and interception detection.
+- Shot detection and two/three-point classification from where the shooter took off.
 - Easy stubbing to skip repeated computation for fast iteration.
 - Various “drawers” to overlay detected elements onto frames.
 
@@ -109,11 +135,13 @@ You can run this repository’s core functionality (analysis pipeline) with Pyth
 Run the main entry point with your chosen video file:
 
 ```bash
-python main.py path_to_input_video.mp4 --output_video output_videos/output_result.avi
+python main.py path_to_input_video.mp4 --output_video output_videos/output_result.avi --league fiba
 ```
 
-- By default, intermediate “stubs” (pickled detection results) are used if found, allowing you to skip repeated detection/tracking.
+- By default, intermediate “stubs” (pickled detection results) are used if found, allowing you to skip repeated detection/tracking. They are kept per video under `stubs/<video name>/`.
 - Use the `--stub_path` flag to specify a custom stub folder, or disable stubs if you want to run everything fresh.
+- Use `--league fiba` (also the CBA) or `--league nba` for the court dimensions and the three-point line.
+- The detected shots are also saved next to the video, as `<output name>_shots.json`.
 
 ### 2) Using Docker
 
@@ -158,11 +186,23 @@ docker run \
 - `court_keypoint_detector/`  
   – Detects lines and keypoints on the court using the specified model.
 
+- `camera_cut_detector/`  
+  – Splits a broadcast video into camera shots from the colour histograms of consecutive frames.
+
+- `tactical_view_converter/`  
+  – Estimates the homography from frame to court: fitted per frame, checked and smoothed per camera shot, and adjusted to the painted court lines. Holds the court dimensions of each league.
+
+- `shot_detector/`  
+  – Finds shot attempts and classifies them as two- or three-pointers.
+
 - `team_assigner/`  
   – Uses zero-shot classification (Hugging Face or similar) to assign players to teams based on jersey color.
 
 - `configs/`  
   – Holds default paths for models, stubs, and output video.
+
+- `evaluation/`  
+  – Labels and scripts that measure each stage against ground truth, with every change undone in turn.
 
 ---
 
