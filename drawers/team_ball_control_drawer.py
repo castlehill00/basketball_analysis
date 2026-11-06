@@ -48,20 +48,15 @@ class TeamBallControlDrawer:
                 in the corresponding frame.
             ball_aquisition (list): A list indicating which player has possession of the ball in each frame.
 
-        Returns:
-            list: A list of frames with team ball control statistics drawn on them.
+        Yields:
+            numpy.ndarray: Each frame with team ball control statistics drawn on it.
         """
         
         team_ball_control = self.get_team_ball_control(player_assignment,ball_aquisition)
 
-        output_video_frames= []
         for frame_num, frame in enumerate(video_frames):
-            if frame_num == 0:
-                continue
-
             frame_drawn = self.draw_frame(frame,frame_num,team_ball_control)
-            output_video_frames.append(frame_drawn)
-        return output_video_frames
+            yield frame_drawn
     
     def draw_frame(self,frame,frame_num,team_ball_control):
         """
@@ -101,8 +96,12 @@ class TeamBallControlDrawer:
         # Get the number of time each team had ball control
         team_1_num_frames = team_ball_control_till_frame[team_ball_control_till_frame==1].shape[0]
         team_2_num_frames = team_ball_control_till_frame[team_ball_control_till_frame==2].shape[0]
-        team_1 = team_1_num_frames/(team_ball_control_till_frame.shape[0])
-        team_2 = team_2_num_frames/(team_ball_control_till_frame.shape[0])
+        # Shares of the frames in which a team had the ball. Frames without control (the ball in
+        # the air, not visible, or a close-up) count for neither team; dividing by all frames, as
+        # before, made the two shares add up to far less than 100%
+        controlled_frames = team_1_num_frames + team_2_num_frames
+        team_1 = team_1_num_frames/controlled_frames if controlled_frames else 0
+        team_2 = team_2_num_frames/controlled_frames if controlled_frames else 0
 
         cv2.putText(frame, f"Team 1 Ball Control: {team_1*100:.2f}%",(text_x, text_y1), cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0,0,0), font_thickness)
         cv2.putText(frame, f"Team 2 Ball Control: {team_2*100:.2f}%",(text_x, text_y2), cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0,0,0), font_thickness)

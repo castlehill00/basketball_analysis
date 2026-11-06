@@ -23,10 +23,14 @@ class BallAquisitionDetector:
                 to be considered in possession of the ball.
             containment_threshold (float): Containment ratio above which a player
                 is considered to hold the ball without requiring distance checking.
+            max_possession_gap (int): With camera shots, a player keeps the ball over at most
+                this many frames between two frames in which they have it (see
+                carry_possession_over_gaps).
         """
         self.possession_threshold = 50
         self.min_frames = 11
         self.containment_threshold = 0.8
+        self.max_possession_gap = 25
         
     def get_key_basketball_player_assignment_points(self, player_bbox,ball_center):
         """
@@ -165,7 +169,7 @@ class BallAquisitionDetector:
                 
         return -1
     
-    def detect_ball_possession(self, player_tracks, ball_tracks):
+    def detect_ball_possession(self, player_tracks, ball_tracks, camera_shots=None):
         """
         Detect which player has the ball in each frame based on bounding box information.
 
@@ -174,11 +178,19 @@ class BallAquisitionDetector:
         Requires a player to hold possession for at least min_frames consecutive frames
         before confirming possession.
 
+        Possession can only be found in frames where the ball is known. Where it is shown only
+        where it was detected (and over short gaps), give the camera shots: a confirmed streak
+        then also covers its first frames, it does not continue across a cut, and possession is
+        carried over the frames between two frames of the same player (see
+        carry_possession_over_gaps).
+
         Args:
             player_tracks (list): A list of dictionaries for each frame, where each dictionary
                 maps player_id to player information including 'bbox'.
             ball_tracks (list): A list of dictionaries for each frame, where each dictionary
                 maps ball_id to ball information including 'bbox'.
+            camera_shots (list or None): (first frame, last frame) of each camera shot, from
+                CameraCutDetector.get_segments.
 
         Returns:
             list: A list of length num_frames with the player_id who has possession,
@@ -187,8 +199,15 @@ class BallAquisitionDetector:
         num_frames = len(ball_tracks)
         possession_list = [-1] * num_frames
         consecutive_possession_count = {}
-        
+        # Frames of the current streak, given to the player once the streak is long enough
+        streak_frames = []
+        shot_starts = {first_frame for first_frame, _ in camera_shots or []}
+
         for frame_num in range(num_frames):
+            if frame_num in shot_starts:
+                consecutive_possession_count = {}
+                streak_frames = []
+
             ball_info = ball_tracks[frame_num].get(1, {})
             if not ball_info:
                 continue
@@ -208,10 +227,44 @@ class BallAquisitionDetector:
             if best_player_id != -1:
                 number_of_consecutive_frames = consecutive_possession_count.get(best_player_id, 0) + 1
                 consecutive_possession_count = {best_player_id: number_of_consecutive_frames} 
+                if number_of_consecutive_frames == 1:
+                    streak_frames = []
+                streak_frames.append(frame_num)
 
                 if consecutive_possession_count[best_player_id] >= self.min_frames:
                     possession_list[frame_num] = best_player_id
+                    if camera_shots is not None and number_of_consecutive_frames == self.min_frames:
+                        # The player already had the ball in the first frames of the streak
+                        for streak_frame in streak_frames:
+                            possession_list[streak_frame] = best_player_id
             else:
                 consecutive_possession_count ={}
-    
+                streak_frames = []
+
+        if camera_shots is not None:
+            possession_list = self.carry_possession_over_gaps(possession_list, camera_shots)
         return possession_list
+
+    def carry_possession_over_gaps(self, possession_list, camera_shots):
+        """
+        Gives the frames between two frames in which the same player has the ball to that player,
+        if both are in the same camera shot and at most max_possession_gap frames apart: in
+        between, the ball was hidden by the player or missed by the detector, but nobody else
+        got it. (A pass or a shot shows up as a gap between two different players, or between
+        a player and no one, and is left as it is.)
+
+        Args:
+            possession_list (list): Player id (or -1) with the ball per frame.
+            camera_shots (list): (first frame, last frame) of each camera shot.
+
+        Returns:
+            list: The possession per frame with the gaps filled.
+        """
+        filled = list(possession_list)
+        for first_frame, last_frame in camera_shots:
+            held = [frame_num for frame_num in range(first_frame, last_frame + 1) if possession_list[frame_num] != -1]
+            for start, end in zip(held, held[1:]):
+                if possession_list[start] == possession_list[end] and end - start - 1 <= self.max_possession_gap:
+                    for frame_num in range(start + 1, end):
+                        filled[frame_num] = possession_list[start]
+        return filled
