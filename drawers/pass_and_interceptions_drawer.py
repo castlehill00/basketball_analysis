@@ -53,17 +53,12 @@ class PassInterceptionDrawer:
             interceptions (list): A list of integers representing interception events at each frame.
                 (1 represents an interception by Team 1, 2 represents an interception by Team 2, 0 represents no interception.)
 
-        Returns:
-            list: A list of frames with pass and interception statistics drawn on them.
+        Yields:
+            numpy.ndarray: Each frame with pass and interception statistics drawn on it.
         """
-        output_video_frames = []
         for frame_num, frame in enumerate(video_frames):
-            if frame_num == 0:
-                continue
-            
             frame_drawn = self.draw_frame(frame, frame_num, passes, interceptions)
-            output_video_frames.append(frame_drawn)
-        return output_video_frames
+            yield frame_drawn
     
     def draw_frame(self, frame, frame_num, passes, interceptions):
         """

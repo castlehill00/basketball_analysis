@@ -4,7 +4,6 @@ class SpeedAndDistanceDrawer():
     def __init__(self):
         pass 
     def draw(self, video_frames,player_tracks,player_distances_per_frame,player_speed_per_frame):
-        output_video_frames = []
         total_distances = {}
 
         for frame,player_tracks,player_distance,player_speed in zip(video_frames,player_tracks,player_distances_per_frame,player_speed_per_frame):            
@@ -30,6 +29,4 @@ class SpeedAndDistanceDrawer():
                     cv2.putText(output_frame, f"{distance:.2f} m",(position[0],position[1]+20),cv2.FONT_HERSHEY_SIMPLEX,0.5,(0,0,0),2)
 
             
-            output_video_frames.append(output_frame)
-
-        return output_video_frames
+            yield output_frame

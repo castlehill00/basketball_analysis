@@ -23,10 +23,9 @@ class BallTracksDrawer:
             tracks (list): A list of dictionaries where each dictionary contains ball information
                 for the corresponding frame.
 
-        Returns:
-            list: A list of processed video frames with drawn ball pointers.
+        Yields:
+            numpy.ndarray: Each video frame with the ball pointer drawn on it.
         """
-        output_video_frames = []
         for frame_num, frame in enumerate(video_frames):
             frame = frame.copy()
             ball_dict = tracks[frame_num]
@@ -37,6 +36,4 @@ class BallTracksDrawer:
                     continue
                 frame = draw_traingle(frame, ball["bbox"],self.ball_pointer_color)
 
-            output_video_frames.append(frame)
-            
-        return output_video_frames
+            yield frame

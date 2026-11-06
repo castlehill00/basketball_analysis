@@ -30,13 +30,12 @@ class TacticalViewDrawer:
             player_assignment (list, optional): List of dictionaries mapping player IDs to team assignments.
             ball_acquisition (list, optional): List indicating which player has the ball in each frame.
             
-        Returns:
-            list: List of frames with tactical view drawn on them.
+        Yields:
+            numpy.ndarray: Each frame with the tactical view drawn on it.
         """
         court_image = cv2.imread(court_image_path)
         court_image = cv2.resize(court_image, (width, height))
 
-        output_video_frames = []
         for frame_idx, frame in enumerate(video_frames):
             frame = frame.copy()
 
@@ -84,6 +83,4 @@ class TacticalViewDrawer:
                     if player_id == player_with_ball:
                         cv2.circle(frame, (x, y), player_radius+3, (0, 0, 255), 2)
             
-            output_video_frames.append(frame)
-
-        return output_video_frames
+            yield frame

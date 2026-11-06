@@ -28,15 +28,13 @@ class PlayerTracker:
         Args:
             frames (list): List of video frames to process.
 
-        Returns:
-            list: YOLO detection results for each frame.
+        Yields:
+            YOLO detection result for each frame, one batch at a time. The results are not
+            collected in a list because each one keeps its frame in memory.
         """
-        batch_size=20 
-        detections = [] 
+        batch_size=20
         for i in range(0,len(frames),batch_size):
-            detections_batch = self.model.predict(frames[i:i+batch_size],conf=0.5)
-            detections += detections_batch
-        return detections
+            yield from self.model.predict(frames[i:i+batch_size],conf=0.5)
 
     def get_object_tracks(self, frames, read_from_stub=False, stub_path=None):
         """

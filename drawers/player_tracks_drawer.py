@@ -33,11 +33,10 @@ class PlayerTracksDrawer:
                 in the corresponding frame.
             ball_aquisition (list): A list indicating which player has possession of the ball in each frame.
 
-        Returns:
-            list: A list of frames with player tracks and ball possession indicators drawn on them.
+        Yields:
+            numpy.ndarray: Each frame with player tracks and ball possession indicators drawn on it.
         """
 
-        output_video_frames= []
         for frame_num, frame in enumerate(video_frames):
             frame = frame.copy()
 
@@ -61,7 +60,4 @@ class PlayerTracksDrawer:
                 if track_id == player_id_has_ball:
                     frame = draw_traingle(frame, player["bbox"],(0,0,255))
 
-            output_video_frames.append(frame)
-
-        return output_video_frames
-        
+            yield frame

@@ -2,3 +2,6 @@ __pycache__/
 *.pt
 *.avi
 *.pkl
+output_videos/*_shots.json
+input_videos/*.mp4
+stubs/
