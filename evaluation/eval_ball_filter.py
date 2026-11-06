@@ -1,5 +1,5 @@
 """
-Compares ball jump filters against manual labels of the ball detections.
+Compares ball jump filters against labels of the ball detections.
 
 Run from the repository root after main.py has produced the stubs of each video:
 
@@ -11,6 +11,9 @@ letterboxed and stretched inference (see eval_ball_preprocessing.py); a detectio
 label of the labelled box at the same place. Each box was judged by eye from a crop around it;
 'ball' labels that implied an impossible jump, or two balls in one frame, were then rechecked
 against the surrounding frames. 'unclear' detections are left out of the counts.
+
+The sample videos are single camera shots, so filtering per camera shot changes nothing here;
+evaluation/eval_ball_frames.py measures the whole ball pipeline on game footage with cuts.
 """
 import argparse
 import json
@@ -53,10 +56,14 @@ def original_remove_wrong_detections(ball_positions):
     return ball_positions
 
 
+EARLIER = {'maximum_speed_in_pixels': 25, 'ball_aspect_range': None}
 FILTERS = [
     ('original (compare with last kept)', original_remove_wrong_detections),
-    ('longest plausible chain', lambda positions: BallTracker.remove_wrong_detections(None, positions, rescue_detections_on_path=False)),
-    ('+ put back detections on the path (final)', lambda positions: BallTracker.remove_wrong_detections(None, positions)),
+    ('longest plausible chain', lambda positions: BallTracker.remove_wrong_detections(
+        None, positions, rescue_detections_on_path=False, **EARLIER)),
+    ('+ put back detections on the path', lambda positions: BallTracker.remove_wrong_detections(None, positions, **EARLIER)),
+    ('+ shape check, speed limit 1.5 ball sizes per frame (final)',
+     lambda positions: BallTracker.remove_wrong_detections(None, positions)),
 ]
 
 
@@ -110,7 +117,7 @@ def print_table(title, rows):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Compare ball jump filters against manual labels')
+    parser = argparse.ArgumentParser(description='Compare ball jump filters against the ball labels')
     parser.add_argument('--videos', nargs='+', type=int, default=[1, 2, 3])
     parser.add_argument('--stub_root', default='stubs')
     args = parser.parse_args()

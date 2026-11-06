@@ -1,5 +1,5 @@
 """
-Compares letterboxed and stretched input for the ball detector against the manual labels.
+Compares letterboxed and stretched input for the ball detector against the ball labels.
 
 Run from the repository root:
 
